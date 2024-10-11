@@ -25,9 +25,9 @@ dat <- read.structure(
 df <- cbind(data.frame(sample_type = rep("reference", nrow(dat@tab)),
                        repunit = as.character(dat@pop),
                        collection = as.character(dat@pop),
-                       indiv = dat@other$X
-),
-as.data.frame(dat@tab))
+                       indiv = dat@other$X),
+            as.data.frame(dat@tab)
+            )
 
 # self assign leave one out
 self_df <- self_assign(reference = df, gen_start_col = 5)
@@ -83,10 +83,6 @@ sa_to_repu %>%
 
 # very bad assignment rates... 
 
-sa_to_repu %>%
-  ggplot(aes(x = z_score)) +
-  geom_density() +
-  facet_wrap(.~collection)
 
 # make number of samples even:
 set.seed(765) # need to set a seed to make this reproducible!
@@ -98,8 +94,6 @@ rubias_genos_14 <- df %>%
 
 # perform self-assignment on reduced number of colony samples
 assign14 <- self_assign(reference = rubias_genos_14, gen_start_col = 5)
-
-
 
 # summarize repunit results
 top_assign14 <- assign14 %>%
@@ -128,29 +122,80 @@ thres90_14samples <- top_assign14 %>%
   tally() %>%
   rename(threshold_90 = n)
 
-# combine
-assign14_no_thres %>%
-  left_join(., thres50_14samples) %>%
-  left_join(., thres90_14samples)
-
-
 # summary of assignments without a likelihood threshold
 top_assign14 %>%
-  #filter(scaled_likelihood > 0.9) %>%
+  filter(scaled_likelihood > 0.9) %>%
   group_by(repunit, inferred_repunit) %>%
   tally() %>%
   ungroup() %>%
   group_by(repunit) %>%
-  mutate(total = sum(n)) %>%
-  mutate(correct = ifelse(repunit == inferred_repunit, n/total, 0)) %>%
+  mutate(total = 14) %>%
+  #mutate(total = sum(n)) %>%
+  mutate(correct = ifelse(repunit == inferred_repunit, n/14, 0)) %>%
   ungroup() %>%
-  filter(repunit == inferred_repunit) #%>%
+  filter(repunit == inferred_repunit) 
+
+# seems to vastly improve with even sample sizes.
+# does this make sense?
 
 
+# ---------------------
+# cycle over the random subsampling of indivs to make sure these results are consistent. 
+nreps <- 100
+
+out <- data.frame(matrix(ncol=5, nrow=0))
+colnames(out) <- c("repunit", "inferred_repunit", "n", "total", "correct")
+
+for(i in 1:nreps){
+
+  rubias_genos_14 <- df %>%
+    group_by(collection) %>%
+    sample_n(14, replace = FALSE) %>% 
+    ungroup() # lowest pop has 14, so use this  
+
+  # perform self-assignment on reduced number of colony samples
+  assign14 <- self_assign(reference = rubias_genos_14, gen_start_col = 5)  
+
+  # summarize repunit results
+  top_assign14 <- assign14 %>%
+    group_by(indiv, collection, repunit) %>%
+    top_n(1, scaled_likelihood) # just the top assignment for each sample
+  
+  # count % accurate
+  tmpout <- top_assign14 %>%
+    filter(scaled_likelihood > 0.9) %>%
+    group_by(repunit, inferred_repunit) %>%
+    tally() %>%
+    ungroup() %>%
+    group_by(repunit) %>%
+    mutate(total = 14) %>%
+    #mutate(total = sum(n)) %>%
+    mutate(correct = ifelse(repunit == inferred_repunit, n/14, 0)) %>%
+    ungroup() %>%
+    filter(repunit == inferred_repunit) 
+  
+  out <- rbind(out, tmpout)
+  
+  
+  }
 
 
+# plot results
 
+ggplot(out, aes(x=repunit, y=correct, fill=repunit))+
+  geom_boxplot()+
+  ylab("% correct assignments") +
+  xlab("population")
 
+ggsave("figures/rubias_subset14indivs_accuracy.png",
+       h=4, w=5)
+
++
+  #facet_grid(test_set  ~ Population )+
+  xlab("Proportion of individuals used in training set") +
+  scale_fill_discrete(name="Prop. of\ntrain loci",guide=guide_legend(reverse=TRUE))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor=element_blank()) 
 
 
 
