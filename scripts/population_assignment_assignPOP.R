@@ -1,24 +1,15 @@
-
-
-# summary of major approaches:
-# https://besjournals.onlinelibrary.wiley.com/doi/full/10.1111/2041-210X.13323
-# https://repository.library.noaa.gov/view/noaa/55421/noaa_55421_DS1.pdf
-
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# assignPOP: https://alexkychen.github.io/assignPOP/analyze.html#evaluate_baseline_data
-
-# https://doi.org/10.1111/eva.12787
-# https://onlinelibrary.wiley.com/doi/full/10.1111/eva.13209
-
-
 library(assignPOP)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
 
 dat <- read.Structure("./data/6479snps_run4_K4structpops_modified.str", 
                       ploidy=2)
 
+# run assignment tests. cycling over both proportion of training indivs and training loci
+# run each model, then can check after to see which performs best.
+# first running with proportion of total individuals in training set
 assign.MC( dat, train.inds=c(0.5, 0.7, 0.9), train.loci=c(0.1, 0.25, 0.5, 0.75, 1),
            loci.sample="fst", iterations=30, model="svm", dir="./analysis/MC_svm_fst_propIndiv/")
 
@@ -102,10 +93,6 @@ fixedIndiv <- rbind(accuracyMC_svm_fst_fixedIndiv, accuracyMC_lda_fst_fixedIndiv
 
 # plot results:
 
-library(ggplot2)
-library(tidyr)
-library(dplyr)
-
 propIndiv$train.inds <- as.factor(propIndiv$train.inds)
 propIndiv$train.loci <- as.factor(propIndiv$train.loci)
 
@@ -121,7 +108,7 @@ df_melted <- df %>%
   )
 
 head(df_melted)
-levels(dfre$variable) <- sub("all", "Overall", levels(dfre$variable)) #change "all" to "Overall" if exists
+#levels(df_melted$variable) <- sub("all", "Overall", levels(df_melted$variable)) #change "all" to "Overall" 
 
 plt_prop <- ggplot(df_melted, aes(x=train.inds, y=Assignment_Rate, fill=train.loci))+
   geom_boxplot()+
@@ -148,20 +135,19 @@ df$train.loci <- as.factor(df$train.loci)
 pop <- c("all", "Orange_84", "Red_21", "DarkGreen_17","LightGreen_14" )
 colnames(df) <- gsub("^assign\\.rate\\.", "", names(df))
 #reshape data frame
-df_melted <- df %>%
+df_melted_fixed <- df %>%
   pivot_longer(
     cols = c(all, Orange_84, DarkGreen_17, LightGreen_14, Red_21),
     names_to = "Population",
     values_to = "Assignment_Rate"
   )
 
-head(df_melted)
-levels(dfre$variable) <- sub("all", "Overall", levels(dfre$variable)) #change "all" to "Overall" if exists
-df_melted$train.inds <- factor(df_melted$train.inds, 
+head(df_melted_fixed)
+#levels(df_melted$variable) <- sub("all", "Overall", levels(df_melted$variable)) #change "all" to "Overall"
+df_melted_fixed$train.inds <- factor(df_melted_fixed$train.inds, 
                                levels = c("5", "10", "12"))
 
-
-plt_fixed <- ggplot(df_melted, aes(x=train.inds, y=Assignment_Rate, fill=train.loci))+
+plt_fixed <- ggplot(df_melted_fixed, aes(x=train.inds, y=Assignment_Rate, fill=train.loci))+
   geom_boxplot()+
   facet_grid(test_set  ~ Population )+
   xlab("Number of individuals used in training set") + ylab("Assignment accuracy") +
@@ -171,3 +157,27 @@ plt_fixed <- ggplot(df_melted, aes(x=train.inds, y=Assignment_Rate, fill=train.l
 
 ggsave("figures/assignment_rates_fixedIndivs.png", plt_fixed,
        h=6,w=10)
+
+
+#-------------------------------------------------------------------------------
+# that's a lot to digest, so parse it down just to svm, which clearly performs best
+
+svm1 <- df_melted[grep("svm",df_melted$test_set),]
+svm2 <- df_melted_fixed[grep("svm",df_melted_fixed$test_set),]
+svm <- rbind(svm1, svm2)
+
+plt_svm <- ggplot(svm, aes(x=train.inds, y=Assignment_Rate, fill=train.loci))+
+  geom_boxplot()+
+  facet_grid(Population ~ test_set, scales="free" )+
+  xlab("Number of individuals used in training set") + ylab("Assignment accuracy") +
+  scale_fill_discrete(name="Prop. of\ntrain loci",guide=guide_legend(reverse=TRUE))+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor=element_blank()) 
+plt_svm
+
+ggsave("figures/assignment_rates_svm.png", plt_svm,
+       h=8,w=6)
+
+
+
+

@@ -1,13 +1,11 @@
 
-#### --------------------------------------------------------------------------
-#### --------------------------------------------------------------------------
-#### --------------------------------------------------------------------------
-#### --------------------------------------------------------------------------
-#### --------------------------------------------------------------------------
 # rubias
 # https://cran.r-project.org/web/packages/rubias/vignettes/rubias-overview.html
 library(rubias)
 library(adegenet)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
 
 dat <- read.structure(
   file= "./data/6479snps_run4_K4structpops_modified.str",
@@ -62,15 +60,8 @@ thres90 <- self_df %>%
   tally() %>%
   rename(threshold_90 = n)
 
-# combine:
-assign_no_thres %>%
-  left_join(., thres50) %>%
-  left_join(., thres90)
-
-
-
 # summary of assignments with a likelihood threshold of 0.9
-sa_to_repu %>%
+assign_with_thres <- sa_to_repu %>%
   filter(scaled_likelihood > 0.9) %>%
   group_by(repunit, inferred_repunit) %>%
   tally() %>%
@@ -82,17 +73,38 @@ sa_to_repu %>%
   filter(repunit == inferred_repunit) 
 
 # very bad assignment rates... 
+assign_with_thres
+
+write.csv(file="analysis/rubias_assign_rates_allIndivs.csv",assign_with_thres, 
+          row.names=F)
+
+# this is a known bias (see https://doi.org/10.1111/2041-210X.14286)
 
 
+p1 <- ggplot(assign_with_thres, aes(x=repunit, y=correct, fill=repunit))+
+  geom_point(size=4, pch=21)+
+  ylab("% correct assignments") +
+  xlab("population") + 
+  theme_bw(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.position="none") +
+  ylim(0,1) +
+  scale_fill_manual(values=c("darkgreen", "lawngreen", "orange3", "red3")) +
+  ggtitle("all individuals")
+
+ggsave("figures/rubias_allindivs_accuracy.png",p1,
+       h=4, w=5)
+
+#--------------------------------------------------------------------------------
 # make number of samples even:
-set.seed(765) # need to set a seed to make this reproducible!
+set.seed(765) # need to set a seed to make reproducible
 
 rubias_genos_14 <- df %>%
   group_by(collection) %>%
   sample_n(14, replace = FALSE) %>% 
   ungroup() # lowest pop has 14, so use this
 
-# perform self-assignment on reduced number of colony samples
+# perform self-assignment on reduced number of samples
 assign14 <- self_assign(reference = rubias_genos_14, gen_start_col = 5)
 
 # summarize repunit results
@@ -105,24 +117,7 @@ assign14_no_thres <- top_assign14 %>%
   group_by(repunit, inferred_repunit) %>%
   tally()
 
-# summarize with 50% likelihood:
-# 50% likelihood threshold
-thres50_14samples <- top_assign14 %>%
-  group_by(indiv, collection, repunit) %>%
-  filter(scaled_likelihood > 0.5) %>%
-  group_by(repunit, inferred_repunit) %>%
-  tally() %>%
-  rename(threshold_50 = n)
-
-# 90% likelihood threshold
-thres90_14samples <- top_assign14 %>%
-  group_by(indiv, collection, repunit) %>%
-  filter(scaled_likelihood > 0.9) %>%
-  group_by(repunit, inferred_repunit) %>%
-  tally() %>%
-  rename(threshold_90 = n)
-
-# summary of assignments without a likelihood threshold
+# summary of assignments with a likelihood threshold
 top_assign14 %>%
   filter(scaled_likelihood > 0.9) %>%
   group_by(repunit, inferred_repunit) %>%
@@ -136,11 +131,11 @@ top_assign14 %>%
   filter(repunit == inferred_repunit) 
 
 # seems to vastly improve with even sample sizes.
-# does this make sense?
 
 
-# ---------------------
-# cycle over the random subsampling of indivs to make sure these results are consistent. 
+
+# -------------------------------------------------------------------------------
+# cycle over the random subsampling of indivs to make sure these results are consistent w/ diff indivs. 
 nreps <- 100
 
 out <- data.frame(matrix(ncol=5, nrow=0))
@@ -182,67 +177,18 @@ for(i in 1:nreps){
 
 # plot results
 
-ggplot(out, aes(x=repunit, y=correct, fill=repunit))+
+p2 <- ggplot(out, aes(x=repunit, y=correct, fill=repunit))+
   geom_boxplot()+
   ylab("% correct assignments") +
-  xlab("population")
+  xlab("population") +
+  theme_bw(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.position="none") +
+  ylim(0,1) +
+  scale_fill_manual(values=c("darkgreen", "lawngreen", "orange3", "red3")) +
+  ggtitle("subsampled to 14 indivs")
 
-ggsave("figures/rubias_subset14indivs_accuracy.png",
+ggsave("figures/rubias_subset14indivs_accuracy.png",p2,
        h=4, w=5)
 
-+
-  #facet_grid(test_set  ~ Population )+
-  xlab("Proportion of individuals used in training set") +
-  scale_fill_discrete(name="Prop. of\ntrain loci",guide=guide_legend(reverse=TRUE))+
-  theme_bw()+
-  theme(panel.grid.major = element_blank(), panel.grid.minor=element_blank()) 
-
-
-
-
-sum(self_df$repunit == self_df$inferred_repunit)/nrow(self_df)
-
-sa_to_repu <- self_df %>%
-  group_by(indiv, collection, repunit, inferred_repunit) %>%
-  summarise(repu_scaled_like = sum(scaled_likelihood))
-
-head(sa_to_repu)
-
-inferred <- sa_to_repu[which(sa_to_repu$repu_scaled_like > 0.7),]
-
-inferred[!inferred$repunit == inferred$inferred_repunit,]
-sum(inferred$repunit == inferred$inferred_repunit)/136
-
-
-
-
-
-
-# Simulated mixtures using a leave-one-out type of approach
-
-df_sims <- assess_reference_loo(reference = df, 
-                                gen_start_col = 5, 
-                                reps = 5, 
-                                mixsize = 100)
-
-
-tmp <- chin_sims_repu_top6 %>%
-  mutate(repunit = ifelse(repunit %in% arep$repunit, repunit, "OTHER")) %>%
-  group_by(iter, repunit) %>%
-  summarise(true_repprop = sum(true_pi), 
-            reprop_posterior_mean = sum(post_mean_pi),
-            repu_n = sum(n)) %>%
-  mutate(repu_n_prop = repu_n / sum(repu_n))
-
-
-
-
-df_sims
-
-dim(dat@tab)
-
-length(dat$LocusName)
-ncol(dat$DataMatrix)
-
-dat <- read.Structure("./data/6479snps_run4_K4structpops_modified.str", 
-                      ploidy=2)
+ggsave("figures/rubias_combined_accuracy.png",ggarrange(p1, p2), h=3.5, w=7)
