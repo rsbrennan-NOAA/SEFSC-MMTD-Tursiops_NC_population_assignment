@@ -2,6 +2,12 @@
 
 Initial analysis to determine the ability to conduct population assignments for Tursiops off NC coast. 
 
+Find summary from 2024-10-18 at:
+
+- [html summary 2024-10-18](https://github.com/rsbrennan-NOAA/SEFSC-MMTD-Tursiops_NC_population_assignment/blob/main/assignment_assessment_summary_2024-10-18.html)
+- [pdf summary 2024-10-18](https://github.com/rsbrennan-NOAA/SEFSC-MMTD-Tursiops_NC_population_assignment/blob/main/assignment_assessment_summary_2024-10-18.pdf)
+
+
 I have taken 3 main approaches:
 
 1. [rubias](https://github.com/eriqande/rubias)
