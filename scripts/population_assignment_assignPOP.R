@@ -181,3 +181,127 @@ ggsave("figures/assignment_rates_svm.png", plt_svm,
 
 
 
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# Eric Anderson suggestion
+#  I would say leave the first individual in each sample out in the holdout set, 
+   # then use the rest to train it, and then use the trained model to assign the individuals in the holdout set.  
+   # Then do the same thing, but leave the 2nd individual out of each population.  
+   # Then the third, and so forth.
+
+# just do this with svm, it performs best. 
+
+
+dat <- read.Structure("./data/6479snps_run4_K4structpops_modified.str", 
+                      ploidy=2)
+
+# run assignment tests. cycling over both proportion of training indivs and training loci
+# run each model, then can check after to see which performs best.
+# first running with proportion of total individuals in training set
+assign.MC( dat, train.inds=c(0.5, 0.7, 0.9), train.loci=c(0.1, 0.25, 0.5, 0.75, 1),
+           loci.sample="fst", iterations=30, model="svm", dir="./analysis/MC_svm_fst_propIndiv/")
+
+accuracyMC_svm_fst_propIndiv <- accuracy.MC(dir= "./analysis/MC_svm_fst_propIndiv/")
+
+# pick one indiv/pop
+
+# for test training, remove one indiv from each pop
+genoMatrix <- dat[[1]]
+pop_ids <- genoMatrix$popNames_vector
+orange_idx <- which(pop_ids == "Orange_84")
+lightGreen_idx <- which(pop_ids == "LightGreen_14")
+darkGreen_idx <- which(pop_ids == "DarkGreen_17")
+red_idx <- which(pop_ids == "Red_21")
+
+
+pop_ids <- genoMatrix$popNames_vector
+
+# indiv counter for each population
+pop_counters <- list(
+  Orange_84 = 1,
+  LightGreen_14 = 1,
+  DarkGreen_17 = 1,
+  Red_21 = 1
+)
+
+# Get max pop size for max number of iterations
+max_iterations <- max(popSizes)
+
+all_results <- data.frame(
+  DarkGreen_17  = logical(),
+  LightGreen_14  = logical(),
+  Orange_84  = logical(),
+  Red_21  = logical()
+)
+
+# Loop through each individual
+for(i in 1:max_iterations) {
+  testSet_index <- numeric()
+  
+  # For each population
+  for(pop in population_names) {
+    # Get indices for this population
+    pop_idx <- which(pop_ids == pop)
+    
+    # Only add to test set if I haven't exceeded population size
+    if(pop_counters[[pop]] <= popSizes[pop]) {
+      testSet_index <- c(testSet_index, pop_idx[pop_counters[[pop]]])
+      # increase count for this pop
+      pop_counters[[pop]] <- pop_counters[[pop]] + 1
+    } else {
+      # go back to first indiv if past population end
+      pop_counters[[pop]] <- 1
+      testSet_index <- c(testSet_index, pop_idx[pop_counters[[pop]]])
+      pop_counters[[pop]] <- pop_counters[[pop]] + 1
+    }
+  }
+  
+  # Get training indices as all indices except test set
+  trainSet_index <- seq_along(pop_ids)[-testSet_index]
+  
+  #make actual matrix
+  trainSetMatrix <- genoMatrix[trainSet_index,]
+  testSetMatrix <- genoMatrix[testSet_index,]
+  # set popnames:
+  trainSetMatrix$popNames_vector <- genoMatrix$popNames_vector[-testSet_index]
+  testSetMatrix$popNames_vector <- genoMatrix$popNames_vector[testSet_index]
+  trainIndID <- dat[[2]][-testSet_index]#Get test individual ID for later print out
+  testIndID <- dat[[2]][testSet_index]#Get test individual ID for later print out
+  
+  #convert to appropriate list for assignPOP
+  trainSet_list <- list(trainSetMatrix,trainIndID, dat$LocusName )
+  testSet_list <- list(testSetMatrix,testIndID, dat$LocusName )
+  
+  assign.X( x1=trainSet_list, x2=testSet_list, dir="analysis/LOO_assignPOP/", 
+                                                model="svm")
+  
+  tmp.result <- read.csv("analysis/LOO_assignPOP/AssignmentResult.txt", h=T, sep=" ")
+  #testSetMatrix$popNames_vector == tmp.result$pred.pop
+  
+  tmp.logical <- testSetMatrix$popNames_vector == tmp.result$pred.pop 
+  # Create a row of logical values for each population
+  rep_results <- data.frame(
+    DarkGreen_17 = tmp.logical[1],
+    LightGreen_14 = tmp.logical[2],
+    Orange_84 = tmp.logical[3],
+    Red_21 = tmp.logical[4]
+  )
+  
+  # Append to main results dataframe
+  all_results <- rbind(all_results, rep_results)
+}
+
+sum(all_results$DarkGreen_17)/nrow(all_results)
+
+proportion_out <- all_results %>%
+  summarise(across(everything(), ~mean(., na.rm = TRUE))) %>%
+  pivot_longer(everything(), 
+               names_to = "color", 
+               values_to = "proportion")
+
+# same results as the testing training approach. 
+
